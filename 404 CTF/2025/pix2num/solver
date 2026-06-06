@@ -1,0 +1,80 @@
+from PIL import Image
+import sys
+
+from collections import defaultdict
+
+def find_key_candidates(encrypted_number):
+    blocks = []
+    num = encrypted_number
+    while num:
+        block = num & 0xFFFF_FFFF_FFFF_FFFF
+        blocks.append(block)
+        num >>= 64
+    
+    freq = defaultdict(int)
+    for block in blocks:
+        freq[block] += 1
+    
+    # Get top 10 frequent blocks and their inverted variants
+    candidates = []
+    for block, count in sorted(freq.items(), key=lambda x: -x[1])[:10]:
+        candidates.append(block)  # Potential key (if plaintext was 0)
+        candidates.append(block ^ 0xFFFF_FFFF_FFFF_FFFF)  # If plaintext was 1
+    
+    return list(set(candidates))  # Remove duplicates
+
+
+sys.set_int_max_str_digits(100000)  # Same as in encrypt.py
+
+WIDTH = 400
+HEIGHT = 200
+
+def decrypt_number(encrypted_number, key):
+    """Decrypt the number using the key."""
+    original_number = 0
+    shift = 0
+    while encrypted_number:
+        # XOR each 64-bit block with the key
+        bloc = (encrypted_number & 0xFFFF_FFFF_FFFF_FFFF) ^ key
+        original_number |= (bloc << shift)
+        encrypted_number >>= 64
+        shift += 64
+    return original_number
+
+def convert_to_image(number):
+    """Convert a number back to an image."""
+    # Convert to binary and remove '0b' prefix
+    binary_representation = bin(number)[2:]
+    
+    # Ensure the binary string has the correct length with leading zeros
+    binary_representation = binary_representation.zfill(WIDTH * HEIGHT)
+    
+    # Create a new black and white image
+    image = Image.new('1', (WIDTH, HEIGHT))
+    
+    # Fill the image with pixel data (1 = white, 0 = black)
+    pixels = []
+    for bit in binary_representation:
+        pixels.append(255 if bit == '1' else 0)
+    
+    image.putdata(pixels)
+    return image
+
+def main():
+    with open('number.txt', 'r') as file:
+        encrypted_number = int(file.read())
+    
+    candidates = find_key_candidates(encrypted_number)
+    
+    for key in candidates:
+        try:
+            decrypted_number = decrypt_number(encrypted_number, key)
+            image = convert_to_image(decrypted_number)
+            image.save(f'decrypted_candidate_{key}.png')
+            print(f"Tried candidate key: {hex(key)}")
+        except Exception as e:
+            print(f"Error with key {hex(key)}: {e}")
+
+if __name__ == "__main__":
+    main()
+
